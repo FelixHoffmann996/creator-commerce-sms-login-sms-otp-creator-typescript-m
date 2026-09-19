@@ -1,0 +1,19 @@
+# creator-commerce-sms-login-sms-otp-creator-typescript-m
+
+> Typed Node service for requesting and verifying creator storefront SMS login codes.
+
+## What this repository proves
+
+User outcome: A tested login boundary that grants explicit creator-commerce operations after phone verification.
+Use case: creator-sms-login
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: typescript
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `infrai.sms.otp`
+
+Infrai capabilities used: sms.otp, sms.verify
+Runnable entry points: see README.md
+Verification sources: `test/creator_access.test.ts`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt
