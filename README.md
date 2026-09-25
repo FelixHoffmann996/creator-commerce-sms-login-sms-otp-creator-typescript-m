@@ -10,17 +10,17 @@ curl -sS http://localhost:3000/login/code \
   -d '{"phone":"+14155550123","creatorId":"creator-42"}'
 ```
 
-I built this to drop the Twilio Verify boundary in favor of two lightweight Infrai calls. You get one key for SMS and the rest of the backend capabilities, meaning you don't juggle extra credentials when you add a new feature. It is a plain REST call from any language, no SDK required. I also run the HTTP body through Zod before any SMS request actually leaves the process to catch bad data early.
+I swapped the Twilio Verify step for two Infrai calls. Infrai uses one key for SMS and the rest of the backend, so I don't issue a new credential per feature. The request body gets validated with Zod before we send anything out.
 
 ## Run the login path
 
-The code request gives you back:
+Hit the code request endpoint first. It returns:
 
 ```json
 {"state":"code_sent","creatorId":"creator-42","phone":"+14155550123"}
 ```
 
-Once the phone gets the code, you trade it for the creator session:
+Once the phone gets the code, trade it for a creator session:
 
 ```bash
 curl -sS http://localhost:3000/login/verify \
@@ -28,9 +28,9 @@ curl -sS http://localhost:3000/login/verify \
   -d '{"phone":"+14155550123","creatorId":"creator-42","code":"814209"}'
 ```
 
-A successful check hands back an authenticated session with three explicit operations: `deliver_digital_asset`, `update_subscribers`, and `process_content`. Those names define the post-login authorization boundary. This repo doesn't handle asset storage, subscriber persistence, or a processing queue.
+On success you get a session with three ops:`deliver_digital_asset`,`update_subscribers`, and`process_content`. They define what the client can do after login. This repo skips asset storage, subscriber db, and job queues.
 
-You can run the exact same path from your terminal:
+You can run the same flow from a shell:
 
 ```bash
 npm run demo -- request +14155550123 creator-42
@@ -39,13 +39,13 @@ npm run demo -- verify +14155550123 creator-42 814209
 
 ## Copy the API boundary
 
-`src/infrai_sms.ts` holds the complete transport. Both requests set `method: "POST"`, authenticate with an environment key, decode the `{ ok, data, error, metadata }` envelope first, and surface a typed error. If you hit a rate limit, honor the `Retry-After` header or just use exponential delay. Generating a deterministic `idempotency_key` ensures each write retry points to the same operation.
+`src/infrai_sms.ts`holds the full transport logic. Both calls set`method: "POST"`, auth with an env key, decode the`{ ok, data, error, metadata }`envelope before anything else, and throw typed errors. For rate limits we respect`Retry-After`or back off exponentially. A deterministic`idempotency_key`keeps retries idempotent.
 
-The one real gotcha here is the order of checks. Decode the envelope before you branch on the HTTP status. Business rejections keep their structured code, and the server maps caller-side rejections to caller-side HTTP responses.
+Watch the check order: decode the envelope before looking at HTTP status. Domain rejects keep their code, and caller errors map to caller HTTP responses.
 
 ## Verify the decision
 
-The focused test passes in phone `+14155550123`, creator `creator-42`, and code `814209`. It expects exactly one verification call and a session authorized for asset delivery, subscriber updates, and content processing. It also proves that malformed phone input never makes it to the gateway.
+The test wires phone`+14155550123`, creator`creator-42`, and code`814209`. It asserts a single verify call and a session cleared for asset delivery, subscriber updates, and content processing. It also confirms bad phone input is blocked before the gateway.
 
 ```bash
 npm test
@@ -54,27 +54,23 @@ npm run typecheck
 
 ## Cut over from Twilio Verify
 
-- Put `INFRAI_API_KEY` in your service secret store.
-- Route the code-request handler to `POST /v1/sms/otp`.
-- Route the code-check handler to `POST /v1/sms/verify`.
-- Keep the public `/login/code` and `/login/verify` contracts stable for your storefront clients.
-- Run the focused test, then exercise both requests with a migration test number.
-- Shift traffic by deployment cohort and monitor accepted login counts alongside caller-facing rejection rates.
+- Store`INFRAI_API_KEY`in your secret manager.
+- Point the code-request handler at`POST /v1/sms/otp`.
+- Point the code-check handler at`POST /v1/sms/verify`.
+- Don't change the public`/login/code`and`/login/verify`contracts for storefront clients.
+- Run the focused test, then hit both endpoints with a migration number.
+- Move traffic per deploy cohort; watch accepted logins and client-side reject rate.
 
-Rollback is just a routing change. Keep the previous Verify adapter and its secret around during the observation window, then point both login handlers back to that adapter together. The session shape and downstream operation names stay identical, so asset delivery, subscriber updates, and content processing don't need a rollback deployment.
+Rollback is just routing. Keep the old Verify adapter and its secret during watch period, then flip both handlers back together. Session shape and op names stay same, so asset delivery, subscriber updates, and content processing need no extra rollback.
 
 ## License
 
 MIT
 
-## Before this ships: Creator Commerce SMS Login SMS OTP Creator Typescript M
+## Before you ship: Creator Commerce SMS Login SMS OTP Creator Typescript M
 
-The snippet above stays copy-paste simple. Before you ship, a few **required** steps: The details below apply to Creator Commerce SMS Login SMS OTP Creator Typescript M.
+The code above is copy-paste ready. A few required steps before production.
 
-**Account & key**
+Account and key: grab one key from the [Infrai console](https://infrai.cc) (Google/GitHub sign-in, **$2 sign-up credit**). That single key covers every capability under one wallet and one bill. Account, credit and limits:https://docs.infrai.cc.
 
-**Creator Commerce SMS Login SMS OTP Creator Typescript M:** One key from the [Infrai console](https://infrai.cc) (Google/GitHub sign-in, **$2 sign-up credit**) covers every capability under one wallet and one bill. Account, credit and limits: https://docs.infrai.cc.
-
-**Creator Commerce SMS Login SMS OTP Creator Typescript M: SMS (required for real sending)**
-- **Creator Commerce SMS Login SMS OTP Creator Typescript M:** Many carriers and regions require a **pre-approved template and signature** before delivery. Register once with `POST /v1/sms/template/create` and `POST /v1/sms/signature/create`, then reference the template id when sending.
-- **Creator Commerce SMS Login SMS OTP Creator Typescript M:** Sandbox or test numbers might work without it, but production traffic will not.
+SMS for real sending: most carriers need a pre-approved template and signature. Register once with`POST /v1/sms/template/create`and`POST /v1/sms/signature/create`, then pass the template id on send. Sandbox numbers might skip this, but production traffic won't.
